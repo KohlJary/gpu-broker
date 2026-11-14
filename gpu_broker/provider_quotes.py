@@ -32,7 +32,7 @@ def parse_quote(raw: Mapping[str, Any], *, observed_at_s: float) -> ProviderQuot
     currency = raw.get("currency")
     memory_gib = raw.get("memory_gib")
     hourly = raw.get("hourly_usd")
-    if not all(isinstance(x, str) and x.strip() for x in (provider, sku, source)):
+    if not isinstance(provider, str) or not provider.strip() or not isinstance(sku, str) or not sku.strip() or not isinstance(source, str) or not source.strip():
         raise ValueError("missing provider identity or quote provenance")
     if currency != "USD":
         raise ValueError("unsupported quote currency")
