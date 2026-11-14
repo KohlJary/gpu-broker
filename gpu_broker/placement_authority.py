@@ -41,7 +41,7 @@ def verified_preflight(
     """
     try:
         decision = verifier(requirement, capability)
-    except Exception:
+    except (ValueError, RuntimeError, TypeError):
         decision = None
     verified = (
         decision is not None
