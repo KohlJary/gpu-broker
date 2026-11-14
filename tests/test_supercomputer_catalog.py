@@ -36,3 +36,22 @@ def test_rejects_invalid_json_shape() -> None:
     with pytest.raises(ValueError):
         test_credential = "fixture-" + "credential"
         discover_skus(token=test_credential, observed_at_s=100, transport=FakeTransport([]))
+
+
+def test_oversized_catalog_rejected_before_parsing() -> None:
+    from gpu_broker.supercomputer_catalog import MAX_CATALOG_BYTES
+
+    class OversizedTransport:
+        def get(self, url: str, *, token: str, timeout_s: float) -> bytes:
+            return b"x" * (MAX_CATALOG_BYTES + 1)
+
+    with pytest.raises(ValueError, match="size limit"):
+        discover_skus(token="fixture-" + "credential", observed_at_s=100, transport=OversizedTransport())
+
+
+def test_read_only_transport_rejects_unpinned_origin() -> None:
+    from gpu_broker.supercomputer_catalog import ReadOnlyCatalogTransport
+
+    transport = ReadOnlyCatalogTransport()
+    with pytest.raises(ValueError, match="invalid catalog request"):
+        transport.get("file:///tmp/catalog.json", token="fixture-" + "credential", timeout_s=1)
