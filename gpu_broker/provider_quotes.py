@@ -5,9 +5,10 @@ Provider responses are untrusted observations, not execution permission.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from math import isfinite
-from typing import Any, Mapping
+from typing import Any
 
 from .placement_preflight import Capability
 
