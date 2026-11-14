@@ -29,7 +29,8 @@ class ReadOnlyCatalogTransport:
     def get(self, url: str, *, token: str, timeout_s: float) -> bytes:
         if url != CATALOG_URL or not token or any(c in token for c in "\r\n"):
             raise ValueError("invalid catalog request")
-        request = Request(url, headers={"Authorization": f"Bearer {token}", "Accept": "application/json"}, method="GET")
+        # Fixed HTTPS origin is checked above; no caller-selected schemes or redirects.
+        request = Request(url, headers={"Authorization": f"Bearer {token}", "Accept": "application/json"}, method="GET")  # noqa: S310 - exact fixed HTTPS URL only
         opener = build_opener(_NoRedirect())
         try:
             with opener.open(request, timeout=timeout_s) as response:
