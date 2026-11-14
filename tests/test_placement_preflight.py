@@ -10,7 +10,13 @@ LOCAL = Capability("local", 4096, 100.0, False)
 
 
 def check(req: Requirement = BASE, cap: Capability = LOCAL, cost: float | None = 1.0):
-    return evaluate(req, cap, now_s=110.0, max_age_s=20.0, estimated_total_usd=cost)
+    return evaluate(req, cap, now_s=110.0, max_age_s=20.0, estimated_total_usd=cost, authority_verified=True)
+
+
+def test_unverified_authority_is_rejected() -> None:
+    result = evaluate(BASE, LOCAL, now_s=110.0, max_age_s=20.0, estimated_total_usd=1.0)
+    assert result.refusal == Refusal.UNVERIFIED_AUTHORITY
+    assert not result.accepted
 
 
 def test_valid_local_candidate() -> None:
