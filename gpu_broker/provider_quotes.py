@@ -64,3 +64,32 @@ def estimate_compute_usd(quote: ProviderQuote, *, duration_s: float) -> float:
     if not isfinite(cost):
         raise ValueError("invalid estimated cost")
     return cost
+
+
+def parse_supercomputer_skus(
+    payload: Mapping[str, Any], *, observed_at_s: float,
+) -> tuple[ProviderQuote, ...]:
+    """Normalize documented GET /v1/skus response without network or effects.
+
+    The published catalog is an observation, not proof of capacity or permission.
+    Unknown/malformed SKU records are rejected rather than silently priced.
+    """
+    skus = payload.get("skus")
+    if not isinstance(skus, list):
+        raise ValueError("invalid SKU catalog")
+    quotes: list[ProviderQuote] = []
+    for item in skus:
+        if not isinstance(item, dict):
+            raise ValueError("invalid SKU entry")
+        availability = item.get("availability")
+        if availability not in ("live", "unavailable", "queued"):
+            raise ValueError("unknown SKU availability")
+        quotes.append(parse_quote({
+            "provider": "supercomputer.sh",
+            "sku": item.get("name"),
+            "memory_gib": item.get("vram_gb"),
+            "hourly_usd": item.get("cost_per_hr"),
+            "currency": "USD",
+            "source": "GET /v1/skus",
+        }, observed_at_s=observed_at_s))
+    return tuple(quotes)
