@@ -41,7 +41,7 @@ def verified_preflight(
     """
     try:
         decision = verifier(requirement, capability)
-    except (ValueError, RuntimeError, TypeError):
+    except Exception:  # noqa: BLE001 - untrusted verifier failure must always refuse placement
         decision = None
     verified = (
         decision is not None
