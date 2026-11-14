@@ -62,3 +62,13 @@ def test_supercomputer_catalog_rejects_invalid_shape() -> None:
     with pytest.raises(ValueError):
         parse_supercomputer_skus({"skus": [{"name": "h100", "vram_gb": 80,
             "cost_per_hr": 3.16, "availability": "mystery"}]}, observed_at_s=100.0)
+
+
+def test_unavailable_and_queued_skus_not_offered() -> None:
+    catalog = {"skus": [
+        {"name": "not-ready", "vram_gb": 80, "cost_per_hr": 0.01, "availability": "queued"},
+        {"name": "offline", "vram_gb": 80, "cost_per_hr": 0.01, "availability": "unavailable"},
+        {"name": "ready", "vram_gb": 80, "cost_per_hr": 2.0, "availability": "live"},
+    ]}
+    quotes = parse_supercomputer_skus(catalog, observed_at_s=100)
+    assert tuple(q.sku for q in quotes) == ("ready",)
