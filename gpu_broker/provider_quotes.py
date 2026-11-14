@@ -44,8 +44,8 @@ def parse_quote(raw: Mapping[str, Any], *, observed_at_s: float) -> ProviderQuot
     if not isfinite(observed_at_s) or observed_at_s < 0:
         raise ValueError("invalid observation time")
     memory_bytes = memory_gib * BYTES_PER_GIB
-    if not memory_bytes.is_integer() if isinstance(memory_bytes, float) else False:
-        raise ValueError("memory must resolve to whole bytes")
+    if not isfinite(memory_bytes) or int(memory_bytes) != memory_bytes:
+        raise ValueError("memory must resolve to finite whole bytes")
     return ProviderQuote(
         capability=Capability(provider, int(memory_bytes), observed_at_s, True),
         sku=sku,
