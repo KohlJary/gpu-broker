@@ -42,7 +42,13 @@ def check_grant(
     if (
         not expected.permit_id or not expected.attempt_id or not expected.cone_id
         or not expected.implementation_id or not expected.provider_id
-        or expected.max_cost_microusd < 0 or expected.expires_at_epoch_s < 0
+        or isinstance(expected.max_cost_microusd, bool)
+        or not isinstance(expected.max_cost_microusd, int)
+        or expected.max_cost_microusd < 0
+        or isinstance(expected.expires_at_epoch_s, bool)
+        or not isinstance(expected.expires_at_epoch_s, int)
+        or expected.expires_at_epoch_s < 0
+        or isinstance(now_epoch_s, bool) or not isinstance(now_epoch_s, int)
         or now_epoch_s < 0
     ):
         return GrantRefusal.INVALID_BINDING
