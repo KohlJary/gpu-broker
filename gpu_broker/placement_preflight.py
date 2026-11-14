@@ -11,6 +11,7 @@ from math import isfinite
 
 class Refusal(StrEnum):
     MISSING_AUTHORITY = "missing_authority"
+    UNVERIFIED_AUTHORITY = "unverified_authority"
     STALE_CAPABILITY = "stale_capability"
     INSUFFICIENT_MEMORY = "insufficient_memory"
     DATA_POLICY = "data_policy"
@@ -50,6 +51,7 @@ def evaluate(
     now_s: float,
     max_age_s: float,
     estimated_total_usd: float | None,
+    authority_verified: bool = False,
 ) -> Preflight:
     """Refuse unknown, stale or unauthorized placements before any effects."""
     if (
@@ -68,6 +70,8 @@ def evaluate(
         return Preflight(False, Refusal.INVALID_REQUIREMENT)
     if not requirement.authority_ref:
         return Preflight(False, Refusal.MISSING_AUTHORITY)
+    if not authority_verified:
+        return Preflight(False, Refusal.UNVERIFIED_AUTHORITY)
     if capability.observed_at_s > now_s or now_s - capability.observed_at_s > max_age_s:
         return Preflight(False, Refusal.STALE_CAPABILITY)
     if requirement.memory_bytes > capability.memory_bytes:
