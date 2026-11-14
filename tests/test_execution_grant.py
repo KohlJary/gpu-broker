@@ -28,3 +28,21 @@ def test_expired_replayed_and_unverified() -> None:
     assert check_grant(BINDING, VerifiedGrant(BINDING, True, True), now_epoch_s=100) == GrantRefusal.REPLAY
     assert check_grant(BINDING, VerifiedGrant(BINDING, False, False), now_epoch_s=100) == GrantRefusal.UNVERIFIED
     assert check_grant(BINDING, None, now_epoch_s=100) == GrantRefusal.UNVERIFIED
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("max_cost_microusd", True),
+        ("max_cost_microusd", 1.5),
+        ("expires_at_epoch_s", False),
+        ("expires_at_epoch_s", 1.5),
+    ],
+)
+def test_rejects_non_integer_grant_fields(field: str, value: object) -> None:
+    malformed = replace(BINDING, **{field: value})
+    assert check_grant(malformed, VerifiedGrant(malformed, True, False), now_epoch_s=100) == GrantRefusal.INVALID_BINDING
+
+
+def test_rejects_boolean_clock() -> None:
+    assert check_grant(BINDING, VerifiedGrant(BINDING, True, False), now_epoch_s=True) == GrantRefusal.INVALID_BINDING
