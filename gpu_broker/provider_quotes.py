@@ -84,6 +84,8 @@ def parse_supercomputer_skus(
         availability = item.get("availability")
         if availability not in ("live", "unavailable", "queued"):
             raise ValueError("unknown SKU availability")
+        if availability != "live":
+            continue  # Non-live SKUs cannot become placement candidates.
         quotes.append(parse_quote({
             "provider": "supercomputer.sh",
             "sku": item.get("name"),
