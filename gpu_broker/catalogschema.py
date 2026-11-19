@@ -41,6 +41,7 @@ class Model(TypedDict, total=False):
     endpoint: str              # OpenAI-compatible base URL (llm_unit)
     served_name: str
     health_path: str           # what answers 200 once the server is ready (default /health; Ollama: /api/version)
+    busy_path: str             # service: GET it during a session; a number (or bool) above 0 means busy
     auth_env: str              # env var holding the server's API key
     slots: int                 # concurrent calls the server accepts
     reserved_interactive: int  # of those, slots background work may never take
@@ -83,6 +84,8 @@ def validate(data: CatalogData) -> None:
     """Reject entries that would hand a driver or an HTTP client something unchecked."""
     if data["defaults"]["resident"] not in data["models"]:
         raise ValueError(f"defaults.resident {data['defaults']['resident']!r} is not a catalog model")
+    if data["models"][data["defaults"]["resident"]].get("runner") == Runner.SERVICE:
+        raise ValueError("defaults.resident cannot be a service: services are only borrowed in sessions")
     names = set(data["models"])
     for key, m in data["models"].items():
         if m.get("runner") not in {r.value for r in Runner}:
@@ -104,8 +107,11 @@ def validate(data: CatalogData) -> None:
         templates.check_defaults(key, m)
         if m.get("runner") == Runner.EXEC:
             _validate_exec(key, m.get("exec") or {})
-        if "health_path" in m and not _is_path(m["health_path"]):
-            raise ValueError(f"{key}: health_path must be a path on the endpoint, like /health")
+        for path_key in ("health_path", "busy_path"):
+            if path_key in m and not _is_path(m[path_key]):
+                raise ValueError(f"{key}: {path_key} must be a path on the endpoint, like /health")
+        if m.get("runner") == Runner.SERVICE:
+            _validate_service(key, m)
         for url_key in ("endpoint", "open_url"):
             if url_key in m and urlsplit(m[url_key]).scheme not in HTTP_SCHEMES:
                 raise ValueError(f"{key}: {url_key} must be an http(s) URL")
@@ -129,6 +135,15 @@ def _validate_inputs(key: str, m: Model) -> None:
             raise ValueError(f"{key}: ComfyUI templates take only {list(IMAGE_SLOTS)}, not {other}")
     if m.get("image_caps") and not spec:
         raise ValueError(f"{key}: image_caps needs `inputs` (they apply only when a job carries one)")
+
+
+def _validate_service(key: str, m: Model) -> None:
+    """A service is a unit with an endpoint, borrowed whole through a session: never queued as a
+    job, and never the default resident (only an LLM can be that)."""
+    if "unit" not in m or "endpoint" not in m:
+        raise ValueError(f"{key}: runner service needs a unit and an endpoint")
+    if not m.get("session_only"):
+        raise ValueError(f"{key}: runner service is used through sessions only; set session_only: true")
 
 
 def _validate_exec(key: str, spec: ExecSpec) -> None:

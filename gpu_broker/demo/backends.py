@@ -108,6 +108,9 @@ class SimBackends:
     def comfy_queue_len(self) -> int | None:
         return 0
 
+    def service_busy(self, model: Model) -> int | None:
+        return 0   # the demo catalog has no services; one that did would be idle at once
+
     def comfy_upload(self, name: str, data: bytes, kind: str) -> str:
         return name
 

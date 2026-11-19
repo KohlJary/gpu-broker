@@ -185,6 +185,11 @@ class FakeBackends:
     def comfy_queue_len(self) -> int | None:
         return self.queue
 
+    def service_busy(self, model) -> int | None:
+        self.busy_asked = [*getattr(self, "busy_asked", []), unit_ref(model["unit"]).name]
+        busy: int | None = getattr(self, "busy", 0)
+        return busy
+
     def comfy_upload(self, name: str, data: bytes, kind: str) -> str:
         self.uploads.append((name, data, kind))
         return name

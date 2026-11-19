@@ -79,6 +79,7 @@ class Runner(StrEnum):
     COMFY = "comfy"         # a graph run on the shared ComfyUI
     EXEC = "exec"           # a command-line program, run by a recipe the host defines
     EXTERNAL = "external"   # downloaded, but nothing can run it yet
+    SERVICE = "service"     # a non-LLM server the driver starts and stops; borrowed only through sessions
 
 
 class ModelStatus(StrEnum):

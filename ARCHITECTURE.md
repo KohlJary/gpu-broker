@@ -31,7 +31,8 @@ staging.py      input files on disk between submit and run; upload to ComfyUI
 catalog.py      the loaded model catalog (trusted config) and its safe writes
   catalogschema.py  catalog entry types and validation rules
 templates/      ComfyUI graph builders                   (pure)
-backends.py     HTTP to LLM servers and ComfyUI          (the only client of configured addresses)
+backends.py     HTTP to LLM servers, ComfyUI and services (the only client of configured addresses)
+  comfyparse.py   ComfyUI's wire formats: upload body, finished outputs   (pure)
 drivers/        start/stop units, read the GPU, fetch files, run exec recipes  (the only subprocesses of `serve`)
 store.py        SQLite jobs/events/downloads/flags + JSONL event log
 schema.py       the SQLite schema and its migrations
@@ -138,5 +139,11 @@ idle ─► Scheduler.maybe_restore ─► Residency.ensure(defaults.resident)
   per recipe) before residency evicts anything. A job's processes are found by the GPU_BROKER_JOB=<job id> tag in their
   environment (drivers/reap.py; `reap_job` in the host script), so workers that leave the
   recipe's process group are found too.
+- **A service** is a catalog entry with `runner: service`, a `unit`, an `endpoint` and
+  `session_only: true`: any server that should hold the card only while it's used (music, speech,
+  a stem separator). A session makes it resident like an LLM unit (the LLM stops, ComfyUI is freed,
+  its `vram_mib` is waited for), but `Residency.service` tracks it apart from `current`, so it is
+  never pooled or offered to chat. The session ends on its `busy_path` (`Backends.service_busy`)
+  as it does on ComfyUI's queue, and the next `ensure` of anything else stops it.
 - **A host** is a `Driver`: `unit`, `gpu`, `gpu_stream`, `download`, `link`, `recipe_info`,
   `run_recipe`, `clean_recipe`.

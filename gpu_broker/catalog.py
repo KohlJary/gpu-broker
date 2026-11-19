@@ -60,6 +60,9 @@ class Catalog:
     def llm_units(self) -> list[tuple[str, Model]]:
         return [(k, m) for k, m in self.models.items() if m.get("runner") == Runner.LLM_UNIT]
 
+    def services(self) -> list[tuple[str, Model]]:
+        return [(k, m) for k, m in self.models.items() if m.get("runner") == Runner.SERVICE]
+
     def units(self) -> list[UnitRef]:
         return [unit_ref(m["unit"]) for m in self.models.values() if "unit" in m]
 

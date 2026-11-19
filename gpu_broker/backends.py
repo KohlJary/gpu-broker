@@ -1,4 +1,4 @@
-"""HTTP clients for the two kinds of backend: OpenAI-compatible LLM servers and ComfyUI.
+"""HTTP clients for the backends: OpenAI-compatible LLM servers, ComfyUI, and services.
 
 The broker only ever contacts URLs from trusted configuration (`comfy.url`, catalog `endpoint`),
 never a URL taken from a request. Values that come back from a backend (a ComfyUI prompt id,
@@ -17,6 +17,7 @@ from http import HTTPStatus
 from typing import Any, Protocol
 from urllib.parse import quote, urlencode, urlsplit
 
+from . import comfyparse
 from .catalog import Model
 from .constants import AUTH_SCHEME, BROKER_FIELDS, ERR_DETAIL, HTTP_SCHEMES, IMAGE_MIME
 from .settings import Comfy, Intervals, Timeouts
@@ -25,11 +26,7 @@ JSON = {"Content-Type": "application/json"}
 HEALTH, CHAT, EMBED = "/health", "/v1/chat/completions", "/v1/embeddings"
 SYSTEM_STATS, FREE, PROMPT, HISTORY, VIEW = "/system_stats", "/free", "/prompt", "/history/", "/view"
 UPLOAD = "/upload/image"
-UPLOAD_FIELDS = {"type": "input", "overwrite": "true"}   # into ComfyUI's input folder, as named
-OUTPUT_KINDS = ("images", "videos", "gifs", "audio")
 OUTPUT_TYPE = "output"
-EXECUTION_ERROR = "execution_error"
-STATUS_ERROR = "error"
 CLIENT_ID_PREFIX = "broker-"
 # OpenAI-style SSE framing, shared by every module that reads or writes it.
 SSE_DATA = "data: "
@@ -55,6 +52,7 @@ class Backends(Protocol):
     def comfy_queue_len(self) -> int | None: ...
     def comfy_upload(self, name: str, data: bytes, kind: str) -> str: ...
     def comfy_view(self, name: str, subfolder: str, kind: str, cap: int) -> bytes | None: ...
+    def service_busy(self, model: Model) -> int | None: ...
 
 
 def view_url(browser_url: str, filename: str, subfolder: str, kind: str = OUTPUT_TYPE) -> str:
@@ -122,6 +120,19 @@ class HttpBackends:
                     summary.update({k: chunk[k] for k in STREAM_SUMMARY_KEYS if isinstance(chunk, dict) and chunk.get(k)})
                 yield line
 
+    # ---- services -------------------------------------------------------
+    def service_busy(self, model: Model) -> int | None:
+        """How busy a service is, from GET endpoint + busy_path: a number, a bool, or {"busy": either}.
+        None when it has no busy_path or cannot say (to a session, not the same as idle)."""
+        if "busy_path" not in model:
+            return None
+        try:
+            got = self._json(_request(model["endpoint"] + model["busy_path"], headers=self._auth(model)), self.t.health_s)
+            got = got.get("busy") if isinstance(got, dict) else got
+            return int(got) if isinstance(got, (bool, int, float)) else None
+        except (OSError, ValueError, TypeError):
+            return None
+
     # ---- ComfyUI --------------------------------------------------------
     def _comfy(self, path: str, body: Any = None) -> urllib.request.Request:
         """A request to ComfyUI at comfy.url, with its Bearer token when comfy.auth_env names one."""
@@ -152,11 +163,7 @@ class HttpBackends:
     def comfy_upload(self, name: str, data: bytes, kind: str) -> str:
         """Store an input image in ComfyUI; returns the name a LoadImage node uses (`subfolder/name`)."""
         boundary = secrets.token_hex(16)
-        parts = [f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
-                 for k, v in UPLOAD_FIELDS.items()]
-        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="image"; filename="{name}"\r\n'
-                     f"Content-Type: {IMAGE_MIME[kind]}\r\n\r\n".encode() + data + b"\r\n")
-        body = b"".join(parts) + f"--{boundary}--\r\n".encode()
+        body = comfyparse.upload_body(boundary, name, data, IMAGE_MIME[kind])
         req = self._comfy(UPLOAD)
         req.data, req.method = body, "POST"
         req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
@@ -177,24 +184,12 @@ class HttpBackends:
         t0 = self.clock()
         while self.clock() - t0 < self.t.comfy_run_s:
             history = self._json(self._comfy(HISTORY + quote(pid, safe="")), self.t.comfy_http_s)
-            if pid in history and (done := self._finished(history[pid])) is not None:
-                return {"model": key, "outputs": done, "wall_s": round(self.clock() - t0, DECIMALS)}
+            if pid in history and (done := comfyparse.finished(history[pid])) is not None:
+                return {"model": key, "outputs": [self._output(o) for o in done],
+                        "wall_s": round(self.clock() - t0, DECIMALS)}
             self.sleep(self.i.comfy_poll_s)
         raise RuntimeError(f"timed out after {self.t.comfy_run_s}s")
 
-    def _finished(self, entry: Mapping[str, Any]) -> list[dict[str, str]] | None:
-        """Output list once the prompt completed, None while it runs; raises on an execution error."""
-        status = entry["status"]
-        if status.get("status_str") == STATUS_ERROR:
-            msgs = [m[1].get("exception_message", "") for m in status.get("messages", []) if m[0] == EXECUTION_ERROR]
-            raise RuntimeError(f"ComfyUI execution error: {(msgs or ['unknown'])[0][:ERR_DETAIL]}")
-        if not status.get("completed"):
-            return None
-        outs = []
-        for node in entry["outputs"].values():
-            for kind in OUTPUT_KINDS:
-                for f in node.get(kind, []):
-                    sub = f.get("subfolder", "")
-                    outs.append({"file": f"{sub}/{f['filename']}".lstrip("/"),
-                                 "url": view_url(self.comfy.browser_url, f["filename"], sub, f.get("type", OUTPUT_TYPE))})
-        return outs
+    def _output(self, o: comfyparse.Output) -> dict[str, str]:
+        return {"file": f"{o.subfolder}/{o.filename}".lstrip("/"),
+                "url": view_url(self.comfy.browser_url, o.filename, o.subfolder, o.kind or OUTPUT_TYPE)}

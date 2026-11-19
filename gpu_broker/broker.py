@@ -17,7 +17,7 @@ from .admission import validate_request as validate_request
 from .backends import Backends, HttpBackends
 from .catalog import Catalog
 from .chat import DirectChat
-from .constants import TERMINAL, UPSTREAM_TOKEN_PREFIX, Event, JobState
+from .constants import TERMINAL, UPSTREAM_TOKEN_PREFIX, Event, JobState, Runner
 from .downloads import Downloader
 from .metrics import GpuSampler
 from .residency import Residency
@@ -54,6 +54,7 @@ class Broker:
                                    self.staging, self.exec_jobs, s.scheduler)
         execjob.check_timeouts(self.catalog, self.exec_jobs, self.store)
         self.sessions.queued_jobs = self.scheduler.has_queued
+        self.sessions.busy_for = self._session_busy
         self.chat = DirectChat(self.catalog, self.store, self.scheduler.pool, self.backends)
         self.downloads = Downloader(self.store, self.driver, self.catalog, s.intervals.worker_poll_s)
         self.sampler = GpuSampler(self.driver.gpu_stream, s.limits.gpu_samples, s.intervals.sampler_retry_s)
@@ -92,6 +93,13 @@ class Broker:
         for t in self._threads:
             if t.name == self.sampler.loop.__qualname__:
                 t.join(join_s)
+
+    def _session_busy(self, key: str) -> int | None:
+        """A session's activity: a service answers its busy_path; anything else is ComfyUI's queue."""
+        m = self.catalog.models.get(key)
+        if m is not None and m.get("runner") == Runner.SERVICE:
+            return self.backends.service_busy(m)
+        return self.backends.comfy_queue_len()
 
     def submit(self, body: Mapping[str, Any], requester: str, requested: str | None = None,
                note: str | None = None, priority: str = "", owner: str | None = None) -> tuple[str, dict[str, Any]]:

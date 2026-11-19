@@ -16,7 +16,7 @@ One LLM and one ComfyUI model:
 defaults:
   resident: my-llm              # held on the card whenever nothing else needs it
   idle_restore_s: 120           # empty queue for this long → make `resident` resident again
-  session_idle_s: 900           # interactive ComfyUI sessions (dashboard)
+  session_idle_s: 900           # interactive sessions: ComfyUI or a service (dashboard)
   session_yield_s: 120
   session_max_s: 14400
   vram_total_mib: 24564         # your card
@@ -57,9 +57,37 @@ models:
 | `llm_unit` | an OpenAI-compatible server (llama.cpp, vLLM, ...) | the driver starts and stops its `unit` |
 | `comfy` | a graph on the shared ComfyUI, built by a `template` | ComfyUI is shared; the broker frees its weights |
 | `exec` | a command-line program | a host recipe: see [exec-recipes.md](exec-recipes.md) |
+| `service` | any other server: music, speech, a stem separator, ... | the driver starts its `unit` for a session, and stops it after |
 
 An `llm_unit` server is ready when `endpoint` + `/health` answers 200. A server without
 `/health` names its own path: `health_path: /api/version` for Ollama.
+
+## Services
+
+A service is a program with its own server and API that shouldn't sit on the card between uses.
+Clients talk to it directly; the broker only decides when it may hold the GPU.
+
+```yaml
+  music-gen:
+    kind: ui
+    runner: service
+    unit: music-gen             # started for a session, stopped as soon as anything else needs the card
+    endpoint: http://127.0.0.1:8001
+    health_path: /health        # ready when this answers 200 (default /health)
+    busy_path: /busy            # optional: GET answers a number, a bool, or {"busy": either}
+    session_only: true          # required: a service is borrowed, never queued as a job
+    vram_mib: 6000              # waited for before it starts
+    status: ready
+```
+
+- Borrow it like a ComfyUI model: `POST /v1/sessions {"model": "music-gen"}`, or **Start** on the dashboard.
+  The response's `id` is the session's job; once the job is running, the service is up.
+- Starting it stops the resident LLM and frees ComfyUI's weights.
+- The session ends after `session_idle_s` of `busy_path` answering 0, sooner when a job is waiting,
+  on `POST /v1/sessions/end`, or at `session_max_s`. Without a `busy_path` the broker can't tell,
+  so the session lasts until it is ended or reaches the cap.
+- When it ends, the default LLM comes back and the service is stopped.
+- A service is never `defaults.resident`.
 
 ## Substitution
 

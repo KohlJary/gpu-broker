@@ -1,10 +1,11 @@
-"""Interactive ComfyUI sessions: hold the GPU for a person using ComfyUI directly.
+"""Interactive sessions: hold the GPU for something used directly, ComfyUI or a service.
 
 A session is an ordinary GPU job, so it queues like any other. While it runs, the LLM is
-stopped and ComfyUI has the whole card. It ends when ComfyUI has had nothing queued for
+stopped and the session's model has the whole card. It ends when the model has been idle for
 `session_idle_s` (shortened to `session_yield_s` while another job is waiting), when the
-user ends it, or at `session_max_s`. A render in progress, or a ComfyUI that cannot be
-asked, counts as activity, so a session never ends mid-render.
+user ends it, or at `session_max_s`. Idle means ComfyUI has nothing queued, or a service's
+busy_path says 0. Work in progress, or a model that cannot be asked, counts as activity, so
+a session never ends mid-render.
 """
 from __future__ import annotations
 
@@ -41,6 +42,8 @@ class Sessions:
         self.d, self.queue_len, self.poll_s = defaults, queue_len, poll_s
         self.clock, self.sleep = clock, sleep
         self.queued_jobs: Callable[[], bool] = lambda: False   # wired to the scheduler by the broker
+        # How busy the session's model is (by catalog key), wired by the broker; None: ask queue_len.
+        self.busy_for: Callable[[str], int | None] | None = None
         self._active: Active | None = None
         self._lock = threading.Lock()
 
@@ -53,7 +56,7 @@ class Sessions:
         reason = End.MAX
         try:
             while self.clock() - start < self.d["session_max_s"]:
-                n, now = self.queue_len(), self.clock()
+                n, now = self.busy_for(model) if self.busy_for else self.queue_len(), self.clock()
                 limit = self.d["session_yield_s"] if self.queued_jobs() else idle_s
                 with self._lock:
                     if n != 0:

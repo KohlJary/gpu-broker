@@ -1,4 +1,4 @@
-"""Interactive-session routes: borrow the GPU for ComfyUI from the dashboard, and give it back."""
+"""Interactive-session routes: borrow the GPU for ComfyUI or a service, and give it back."""
 from __future__ import annotations
 
 from http import HTTPStatus
@@ -11,6 +11,7 @@ from ..constants import SESSION_KEY, ModelStatus, Runner
 from ..sessions import IDLE_MINUTES_KEY
 
 DEFAULT_REQUESTER = "dashboard"
+SESSION_RUNNERS = frozenset({Runner.COMFY, Runner.SERVICE})   # what a session can borrow the card for
 
 
 def router(broker: Broker) -> APIRouter:
@@ -20,8 +21,8 @@ def router(broker: Broker) -> APIRouter:
     def start(body: dict[str, Any]) -> dict[str, Any]:
         key = body.get("model")
         m = broker.catalog.models.get(key) if isinstance(key, str) else None
-        if m is None or m.get("runner") != Runner.COMFY or m.get("status") != ModelStatus.READY:
-            raise HTTPException(HTTPStatus.BAD_REQUEST, f"{key!r} is not a ready ComfyUI model")
+        if m is None or m.get("runner") not in SESSION_RUNNERS or m.get("status") != ModelStatus.READY:
+            raise HTTPException(HTTPStatus.BAD_REQUEST, f"{key!r} is not a ready ComfyUI model or service")
         idle = body.get(IDLE_MINUTES_KEY, 0)
         if not isinstance(idle, (int, float)) or idle < 0:
             raise HTTPException(HTTPStatus.BAD_REQUEST, f"`{IDLE_MINUTES_KEY}` must be a non-negative number")

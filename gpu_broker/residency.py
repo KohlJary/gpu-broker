@@ -1,8 +1,10 @@
 """GPU residency: make exactly the model a job needs resident, evicting whatever is in the way.
 
-Two kinds of tenant share the card. LLM servers are units the driver starts and stops
+Three kinds of tenant share the card. LLM servers are units the driver starts and stops
 whole; at most one is resident. ComfyUI stays running (its idle footprint is small) and
-loads models per job, releasing them on POST /free.
+loads models per job, releasing them on POST /free. A service (a non-LLM server: music, speech,
+anything with a unit and a health check) is also a unit started whole, but only for a session,
+and it is stopped as soon as anything else needs the card.
 
 Only the scheduler's GPU thread calls `ensure`, and only between jobs, so there is no
 locking here. State is re-checked rather than trusted: other operators may stop an LLM or
@@ -32,6 +34,7 @@ class Residency:
         self.t, self.i, self.comfy_unit = timeouts, intervals, comfy_unit
         self.clock, self.sleep = clock, sleep
         self.current: str | None = None      # catalog key of the resident LLM, if any
+        self.service: str | None = None      # catalog key of the resident service, if any (never an LLM)
         self.last_comfy: str | None = None   # last ComfyUI model that ran (its weights may still be loaded)
         # The GPU sampler's latest reading if fresh and taken after the given wall-clock time,
         # else None (then the driver is asked). `wall` stamps that time; samples use time.time.
@@ -49,6 +52,14 @@ class Residency:
                     break
             except DRIVER_ERRORS as e:
                 self.store.event(Event.RES_DETECT_FAILED, model=key, error=str(e)[:ERR_SHORT])
+        self.service = None
+        for key, m in self.catalog.services():   # a service left running holds VRAM: track it to stop it
+            try:
+                if self.driver.unit(m["unit"], Verb.IS_ACTIVE):
+                    self.service = key
+                    break
+            except DRIVER_ERRORS as e:
+                self.store.event(Event.RES_DETECT_FAILED, model=key, error=str(e)[:ERR_SHORT])
         return self.current
 
     def healthy(self, key: str) -> bool:
@@ -63,11 +74,11 @@ class Residency:
             self.sleep(self.i.health_poll_s)
         return None
 
-    def _stop_llm(self, key: str, jid: str | None) -> None:
+    def _stop_unit(self, key: str, jid: str | None) -> None:
         self.store.event(Event.RES_STOP, jid, model=key)
         self.driver.unit(self.catalog.models[key]["unit"], Verb.STOP)
 
-    def _start_llm(self, key: str, jid: str | None) -> None:
+    def _start_unit(self, key: str, jid: str | None) -> None:
         unit = self.catalog.models[key]["unit"]
         self.store.event(Event.RES_START, jid, model=key)
         if not self.driver.unit(unit, Verb.START):
@@ -92,7 +103,13 @@ class Residency:
 
     def ensure(self, key: str, jid: str | None = None) -> None:
         """Make `key` runnable now."""
-        if self.catalog.models[key]["runner"] == Runner.LLM_UNIT:
+        runner = self.catalog.models[key]["runner"]
+        if self.service and self.service != key:   # whatever comes next needs the card the service holds
+            self._stop_unit(self.service, jid)
+            self.service = None
+        if runner == Runner.SERVICE:
+            self._service_up(key, jid)
+        elif runner == Runner.LLM_UNIT:
             if self.current == key and self.healthy(key):
                 return
             if self.current == key:  # stopped from outside since we last looked
@@ -102,12 +119,12 @@ class Residency:
             self.backends.comfy_free()
             self.last_comfy = None
             if self.current:
-                self._stop_llm(self.current, jid)
-            self._start_llm(key, jid)
+                self._stop_unit(self.current, jid)
+            self._start_unit(key, jid)
             self.current = key
         else:
             if self.current:
-                self._stop_llm(self.current, jid)
+                self._stop_unit(self.current, jid)
                 self.current = None
             if self.catalog.models[key]["runner"] == Runner.EXEC:
                 # A program outside ComfyUI needs the card to itself: drop ComfyUI's weights too
@@ -121,6 +138,22 @@ class Residency:
                     self.backends.comfy_free()
                 self.last_comfy = key
         self.store.event(Event.RES_RESIDENT, jid, model=key)
+
+    def _service_up(self, key: str, jid: str | None) -> None:
+        """A service gets the card to itself: stop the LLM, free ComfyUI, wait for its VRAM, start it."""
+        if self.service == key and self.healthy(key):
+            return
+        if self.service == key:  # stopped from outside since we last looked
+            self.store.event(Event.RES_LOST, jid, model=key)
+            self.service = None
+        if self.current:
+            self._stop_unit(self.current, jid)
+            self.current = None
+        self.backends.comfy_free()
+        self.last_comfy = None
+        self._wait_vram(key, self.wall())
+        self._start_unit(key, jid)
+        self.service = key
 
     def _wait_vram(self, key: str, freed_at: float) -> None:
         """Freed VRAM is returned asynchronously (a stopped server's process exits, ComfyUI's
