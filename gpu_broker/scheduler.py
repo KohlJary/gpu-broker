@@ -185,7 +185,7 @@ class Scheduler:
         """Bring the default model back once the GPU has been idle long enough."""
         want, idle_s = self.catalog.defaults["resident"], self.catalog.defaults["idle_restore_s"]
         due = self._restore_now or self.clock() - self._last_activity > idle_s
-        if not due or len(self.line) or (self.res.current == want and self.res.healthy(want)):
+        if not due or len(self.line) or (self.res.current == want and not self.res.service and self.res.healthy(want)):
             return
         self._restore_now = False
         self.pool.close_and_drain()

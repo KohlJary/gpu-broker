@@ -140,17 +140,18 @@ class Residency:
         self.store.event(Event.RES_RESIDENT, jid, model=key)
 
     def _service_up(self, key: str, jid: str | None) -> None:
-        """A service gets the card to itself: stop the LLM, free ComfyUI, wait for its VRAM, start it."""
-        if self.service == key and self.healthy(key):
-            return
-        if self.service == key:  # stopped from outside since we last looked
-            self.store.event(Event.RES_LOST, jid, model=key)
-            self.service = None
+        """A service gets the card to itself: stop the LLM, free ComfyUI, wait for its VRAM, start it.
+        The LLM is stopped even when the service is already up (one left running at startup)."""
         if self.current:
             self._stop_unit(self.current, jid)
             self.current = None
         self.backends.comfy_free()
         self.last_comfy = None
+        if self.service == key and self.healthy(key):
+            return
+        if self.service == key:  # stopped from outside since we last looked
+            self.store.event(Event.RES_LOST, jid, model=key)
+            self.service = None
         self._wait_vram(key, self.wall())
         self._start_unit(key, jid)
         self.service = key

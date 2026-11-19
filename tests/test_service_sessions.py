@@ -105,6 +105,19 @@ def test_detect_finds_a_service_left_running(tmp_path):
     assert r.service is None and "music-gen" not in driver.active
 
 
+def test_a_session_on_a_service_left_running_still_stops_the_llm(tmp_path):
+    """Regression (found on a real card): a service adopted at startup was 'already up', and the
+    session returned before stopping the LLM, so both sat on the card."""
+    driver = FakeDriver({"llama-8b", "music-gen"})
+    r = Residency(Catalog(str(catalog_with_service(tmp_path))), driver, FakeBackends(driver), Store(str(tmp_path / "b.db")),
+                  settings.Timeouts(), settings.Intervals(), unit_ref("comfyui"), sleep=lambda _: None)
+    r.detect()
+    starts = [c for c in driver.calls if c[0] == "start"]
+    r.ensure("music")
+    assert r.current is None and driver.active == {"music-gen"} and r.service == "music"
+    assert [c for c in driver.calls if c[0] == "start"] == starts   # already up: not restarted
+
+
 def test_a_service_waits_for_its_vram(res):
     res.driver.vram = (20000, 24564)   # 4.5 GB free; music needs 6
     with pytest.raises(RuntimeError, match="needs 6000 MiB"):
@@ -164,6 +177,22 @@ def service_broker(tmp_path):
     b.start()
     yield b
     b.stop()
+
+
+def test_restoring_the_default_llm_stops_a_resident_service(tmp_path):
+    """Regression (found on a real card): idle restore saw the default LLM already resident and
+    returned, leaving the service on the card after its session ended."""
+    driver = FakeDriver({"llama-8b", "music-gen"})
+    b = Broker(make_settings(tmp_path, catalog=catalog_with_service(tmp_path)), env={}, driver=driver,
+               backends=FakeBackends(driver))
+    b.start()
+    try:
+        assert b.residency.current == "llama-8b" and b.residency.service == "music"
+        b.scheduler._restore_now = True
+        b.scheduler.maybe_restore()
+        assert b.residency.service is None and "music-gen" not in driver.active and b.residency.current == "llama-8b"
+    finally:
+        b.stop()
 
 
 def test_a_service_session_starts_it_holds_the_card_and_gives_it_back(service_broker):
