@@ -15,6 +15,7 @@ from gpu_broker.catalog import Catalog
 from gpu_broker.catalogschema import validate
 from gpu_broker.constants import JobState
 from gpu_broker.residency import Residency
+from gpu_broker.servicebusy import busy_count
 from gpu_broker.sessions import End, Sessions
 from gpu_broker.store import Store
 from gpu_broker.units import unit_ref
@@ -132,6 +133,25 @@ def test_http_service_busy_reads_a_number_a_bool_or_an_object(http):
                          ("yes", None), ({"other": 1}, None)):
         routes["/busy"] = answer
         assert b.service_busy(SERVICE) == want, answer
+
+
+def test_busy_fields_sum_dotted_paths_in_the_services_own_shape(http):
+    # ACE-Step's /v1/stats, as it answers
+    stats = {"data": {"jobs": {"total": 3, "queued": 1, "running": 1}, "queue_size": 1}, "code": 200}
+    fields = ["data.queue_size", "data.jobs.running"]
+    assert busy_count(stats, fields) == 2
+    assert busy_count({"data": {"jobs": {"running": 0}, "queue_size": 0}}, fields) == 0
+    assert busy_count({"data": {}}, fields) is None   # a field it doesn't answer: can't say
+    _, routes = http
+    routes["/v1/stats"] = stats
+    b = HttpBackends(COMFY, settings.Timeouts(), settings.Intervals(), {}, sleep=lambda _: None)
+    assert b.service_busy({**SERVICE, "busy_path": "/v1/stats", "busy_fields": fields}) == 2
+
+
+def test_busy_fields_must_be_dotted_paths(tmp_path):
+    data = yaml.safe_load(catalog_with_service(tmp_path, busy_fields="data.running").read_text())
+    with pytest.raises(ValueError, match="busy_fields must be a list"):
+        validate(data)
 
 
 # ---- through the broker and the API -------------------------------------------------------------

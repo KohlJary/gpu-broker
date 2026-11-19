@@ -42,6 +42,7 @@ class Model(TypedDict, total=False):
     served_name: str
     health_path: str           # what answers 200 once the server is ready (default /health; Ollama: /api/version)
     busy_path: str             # service: GET it during a session; a number (or bool) above 0 means busy
+    busy_fields: list[str]     # service: dotted paths in busy_path's JSON, summed (default: busy)
     auth_env: str              # env var holding the server's API key
     slots: int                 # concurrent calls the server accepts
     reserved_interactive: int  # of those, slots background work may never take
@@ -144,6 +145,9 @@ def _validate_service(key: str, m: Model) -> None:
         raise ValueError(f"{key}: runner service needs a unit and an endpoint")
     if not m.get("session_only"):
         raise ValueError(f"{key}: runner service is used through sessions only; set session_only: true")
+    fields = m.get("busy_fields", [])
+    if not isinstance(fields, list) or not all(isinstance(f, str) and f for f in fields):
+        raise ValueError(f"{key}: busy_fields must be a list of dotted paths, like data.jobs.running")
 
 
 def _validate_exec(key: str, spec: ExecSpec) -> None:

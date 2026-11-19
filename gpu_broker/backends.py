@@ -20,6 +20,7 @@ from urllib.parse import quote, urlencode, urlsplit
 from . import comfyparse
 from .catalog import Model
 from .constants import AUTH_SCHEME, BROKER_FIELDS, ERR_DETAIL, HTTP_SCHEMES, IMAGE_MIME
+from .servicebusy import BUSY_FIELD, busy_count
 from .settings import Comfy, Intervals, Timeouts
 
 JSON = {"Content-Type": "application/json"}
@@ -122,14 +123,14 @@ class HttpBackends:
 
     # ---- services -------------------------------------------------------
     def service_busy(self, model: Model) -> int | None:
-        """How busy a service is, from GET endpoint + busy_path: a number, a bool, or {"busy": either}.
-        None when it has no busy_path or cannot say (to a session, not the same as idle)."""
+        """How busy a service is, from GET endpoint + busy_path: the sum of its `busy_fields` (dotted
+        paths into the JSON), else a number, a bool, or {"busy": either}. None when it has no
+        busy_path or cannot say (to a session, not the same as idle)."""
         if "busy_path" not in model:
             return None
         try:
             got = self._json(_request(model["endpoint"] + model["busy_path"], headers=self._auth(model)), self.t.health_s)
-            got = got.get("busy") if isinstance(got, dict) else got
-            return int(got) if isinstance(got, (bool, int, float)) else None
+            return busy_count(got, model.get("busy_fields") or [BUSY_FIELD])
         except (OSError, ValueError, TypeError):
             return None
 

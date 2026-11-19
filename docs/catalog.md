@@ -75,6 +75,7 @@ Clients talk to it directly; the broker only decides when it may hold the GPU.
     endpoint: http://127.0.0.1:8001
     health_path: /health        # ready when this answers 200 (default /health)
     busy_path: /busy            # optional: GET answers a number, a bool, or {"busy": either}
+    busy_fields: [data.queue_size, data.jobs.running]   # optional: where in its own JSON, summed
     session_only: true          # required: a service is borrowed, never queued as a job
     vram_mib: 6000              # waited for before it starts
     status: ready
