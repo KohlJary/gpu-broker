@@ -14,6 +14,11 @@ and versions follow [Semantic Versioning](https://semver.org/).
   dashboard shows a **Start** button for services, and `/v1/status` reports `resident_service`.
   See docs/catalog.md#services.
 
+- `gpu-broker preset`: catalog entries for 16 common GPU programs (LLM servers, image UIs,
+  speech servers, ACE-Step, text-embeddings-inference, Immich ML), each with its sources and
+  whether it has been verified on a real card. See docs/presets.md.
+- `busy_metrics`: a service can report busy as Prometheus metrics (vLLM, llama.cpp, TEI).
+
 ### Changed
 - ComfyUI's upload body and finished-output parsing moved from `backends.py` to `comfyparse.py`
   (pure functions); behaviour is unchanged.

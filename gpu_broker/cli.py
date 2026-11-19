@@ -50,11 +50,15 @@ def main(argv: list[str] | None = None, env: Mapping[str, str] | None = None) ->
     if args and args[0] in CONNECT_COMMANDS:
         from .connect.cli import main as connect_main
         return connect_main(args, env)
+    if args and args[0] == "preset":   # catalog entries for common programs; needs no config
+        from .presets.cli import main as preset_main
+        return preset_main(args[1:])
     if args and args[0] == MCP_COMMAND:   # needs neither a config file nor the broker's token
         return mcp_stdio(args[1:], env)
     ap = argparse.ArgumentParser(prog=APP_NAME, description="Share one GPU between LLM servers and ComfyUI. "
                                  "Also: `connect`, `disconnect`, `clients` point this machine's AI apps at a broker; "
-                                 "`mcp` serves its tools over stdio to Claude, Codex and other MCP apps.")
+                                 "`mcp` serves its tools over stdio to Claude, Codex and other MCP apps; "
+                                 "`preset` prints catalog entries for common GPU programs.")
     ap.add_argument("-c", "--config", help=f"config file (default: ${settings.CONFIG_ENV} or {settings.DEFAULT_PATH})")
     sub = ap.add_subparsers(dest="cmd")
     serve = sub.add_parser("serve", help="run the HTTP API (default)")

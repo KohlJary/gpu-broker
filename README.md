@@ -215,6 +215,7 @@ gpu-broker connect --url http://gpu-host:8095     # or click Connect apps on the
 |---|---|
 | [docs/setup.md](docs/setup.md) | `gpu-broker setup`: what it detects, what it writes, flags |
 | [docs/catalog.md](docs/catalog.md) | the catalog: models, substitution, input files, bundled ComfyUI templates |
+| [docs/presets.md](docs/presets.md) | ready-made catalog entries for common GPU programs (`gpu-broker preset`) |
 | [docs/exec-recipes.md](docs/exec-recipes.md) | command-line models (`runner: exec`): recipes, timeouts, GPU holds |
 | [docs/api.md](docs/api.md) | every route, request fields, headers |
 | [docs/drop-in.md](docs/drop-in.md) | using it in place of the OpenAI and Anthropic APIs |

@@ -64,6 +64,9 @@ An `llm_unit` server is ready when `endpoint` + `/health` answers 200. A server 
 
 ## Services
 
+Common programs have ready-made entries: `gpu-broker preset` ([presets.md](presets.md)).
+
+
 A service is a program with its own server and API that shouldn't sit on the card between uses.
 Clients talk to it directly; the broker only decides when it may hold the GPU.
 
@@ -76,6 +79,7 @@ Clients talk to it directly; the broker only decides when it may hold the GPU.
     health_path: /health        # ready when this answers 200 (default /health)
     busy_path: /busy            # optional: GET answers a number, a bool, or {"busy": either}
     busy_fields: [data.queue_size, data.jobs.running]   # optional: where in its own JSON, summed
+    # busy_metrics: [vllm:num_requests_running]       # or: Prometheus metric names at busy_path (/metrics), summed
     session_only: true          # required: a service is borrowed, never queued as a job
     vram_mib: 6000              # waited for before it starts
     status: ready
