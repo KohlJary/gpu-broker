@@ -87,7 +87,8 @@ Clients talk to it directly; the broker only decides when it may hold the GPU.
 - The session ends after `session_idle_s` of `busy_path` answering 0, sooner when a job is waiting,
   on `POST /v1/sessions/end`, or at `session_max_s`. Without a `busy_path` the broker can't tell,
   so the session lasts until it is ended or reaches the cap.
-- When it ends, the default LLM comes back and the service is stopped.
+- When it ends, the default LLM comes back and the service is stopped. A service found running when
+  the broker starts is stopped too: no session can be holding it then.
 - A service is never `defaults.resident`.
 
 ## Substitution

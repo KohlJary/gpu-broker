@@ -10,7 +10,7 @@ and versions follow [Semantic Versioning](https://semver.org/).
   the card through a session, as ComfyUI can. The broker starts its unit when the session starts
   (stopping the LLM and freeing ComfyUI first), ends the session when its optional `busy_path`
   has said 0 for `session_idle_s` (`busy_fields` reads a service's own JSON shape, e.g.
-  ACE-Step's `/v1/stats`), and stops it as soon as anything else needs the card. The
+  ACE-Step's `/v1/stats`), and stops it as soon as anything else needs the card, and at startup. The
   dashboard shows a **Start** button for services, and `/v1/status` reports `resident_service`.
   See docs/catalog.md#services.
 

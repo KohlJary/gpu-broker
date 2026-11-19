@@ -53,11 +53,10 @@ class Residency:
             except DRIVER_ERRORS as e:
                 self.store.event(Event.RES_DETECT_FAILED, model=key, error=str(e)[:ERR_SHORT])
         self.service = None
-        for key, m in self.catalog.services():   # a service left running holds VRAM: track it to stop it
+        for key, m in self.catalog.services():   # left running, outside any session (none survive a restart)
             try:
                 if self.driver.unit(m["unit"], Verb.IS_ACTIVE):
-                    self.service = key
-                    break
+                    self._stop_unit(key, None)   # it holds VRAM nobody is using: give it back
             except DRIVER_ERRORS as e:
                 self.store.event(Event.RES_DETECT_FAILED, model=key, error=str(e)[:ERR_SHORT])
         return self.current

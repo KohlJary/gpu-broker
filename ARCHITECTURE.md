@@ -144,6 +144,7 @@ idle ─► Scheduler.maybe_restore ─► Residency.ensure(defaults.resident)
   a stem separator). A session makes it resident like an LLM unit (the LLM stops, ComfyUI is freed,
   its `vram_mib` is waited for), but `Residency.service` tracks it apart from `current`, so it is
   never pooled or offered to chat. The session ends on its `busy_path` (`Backends.service_busy`)
-  as it does on ComfyUI's queue, and the next `ensure` of anything else stops it.
+  as it does on ComfyUI's queue, and the next `ensure` of anything else (or idle restore) stops it.
+  `detect` stops a service it finds running: no session survives a restart to hold it.
 - **A host** is a `Driver`: `unit`, `gpu`, `gpu_stream`, `download`, `link`, `recipe_info`,
   `run_recipe`, `clean_recipe`.

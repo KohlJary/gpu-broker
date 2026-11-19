@@ -96,22 +96,24 @@ def test_a_resident_healthy_service_is_a_no_op_and_a_lost_one_restarts(res):
     assert "music-gen" in res.driver.active and res.service == "music"
 
 
-def test_detect_finds_a_service_left_running(tmp_path):
+def test_detect_stops_a_service_left_running(tmp_path):
+    """Found on a real card: a service left running at startup (no session can hold it then) kept
+    its VRAM, and the default LLM ran mostly on the CPU beside it."""
     driver = FakeDriver({"llama-8b", "music-gen"})
     r = Residency(Catalog(str(catalog_with_service(tmp_path))), driver, FakeBackends(driver), Store(str(tmp_path / "b.db")),
                   settings.Timeouts(), settings.Intervals(), unit_ref("comfyui"), sleep=lambda _: None)
-    assert r.detect() == "llama-8b" and r.service == "music"
-    r.ensure("llama-8b")   # the next switch stops it, so its VRAM comes back
-    assert r.service is None and "music-gen" not in driver.active
+    assert r.detect() == "llama-8b" and r.service is None and driver.active == {"llama-8b"}
 
 
 def test_a_session_on_a_service_left_running_still_stops_the_llm(tmp_path):
-    """Regression (found on a real card): a service adopted at startup was 'already up', and the
-    session returned before stopping the LLM, so both sat on the card."""
-    driver = FakeDriver({"llama-8b", "music-gen"})
+    """Regression (found on a real card): a service already up returned from its session before the
+    LLM was stopped, so both sat on the card."""
+    driver = FakeDriver({"llama-8b"})
     r = Residency(Catalog(str(catalog_with_service(tmp_path))), driver, FakeBackends(driver), Store(str(tmp_path / "b.db")),
                   settings.Timeouts(), settings.Intervals(), unit_ref("comfyui"), sleep=lambda _: None)
     r.detect()
+    driver.active.add("music-gen")   # up beside the LLM (e.g. started outside the broker)
+    r.service = "music"
     starts = [c for c in driver.calls if c[0] == "start"]
     r.ensure("music")
     assert r.current is None and driver.active == {"music-gen"} and r.service == "music"
@@ -182,12 +184,13 @@ def service_broker(tmp_path):
 def test_restoring_the_default_llm_stops_a_resident_service(tmp_path):
     """Regression (found on a real card): idle restore saw the default LLM already resident and
     returned, leaving the service on the card after its session ended."""
-    driver = FakeDriver({"llama-8b", "music-gen"})
+    driver = FakeDriver({"llama-8b"})
     b = Broker(make_settings(tmp_path, catalog=catalog_with_service(tmp_path)), env={}, driver=driver,
                backends=FakeBackends(driver))
     b.start()
     try:
-        assert b.residency.current == "llama-8b" and b.residency.service == "music"
+        driver.active.add("music-gen")   # a service up beside the default LLM, as a session leaves it
+        b.residency.service = "music"
         b.scheduler._restore_now = True
         b.scheduler.maybe_restore()
         assert b.residency.service is None and "music-gen" not in driver.active and b.residency.current == "llama-8b"
