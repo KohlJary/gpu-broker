@@ -18,6 +18,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
   speech servers, ACE-Step, text-embeddings-inference, Immich ML), each with its sources and
   whether it has been verified on a real card. See docs/presets.md.
 - `busy_metrics`: a service can report busy as Prometheus metrics (vLLM, llama.cpp, TEI).
+- Client keys can use sessions: open one (the key's own name is the requester), poll it with
+  `GET /v1/sessions/{id}` (`live` says when it holds the card), and end it with
+  `POST /v1/sessions/end {"id": ...}`. A key can't read or end another caller's session, and
+  `/v1/status` stays main-token only. A program that borrows the card no longer needs the main token.
 
 ### Changed
 - ComfyUI's upload body and finished-output parsing moved from `backends.py` to `comfyparse.py`

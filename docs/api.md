@@ -17,7 +17,7 @@ For the OpenAI and Anthropic SDKs, see [drop-in.md](drop-in.md).
 | `GET /v1/status` | Residency, queue, downloads, recent jobs, any GPU hold. |
 | `GET /v1/events?since=N` | The event log. |
 | `GET /v1/gpu`, `/v1/metrics`, `/v1/stats`, `/v1/ui` | Dashboard data: GPU reading, live samples (job latency, tok/s), per-model stats, labels. |
-| `POST /v1/sessions`, `/v1/sessions/end` | Borrow the GPU for interactive ComfyUI, and give it back. |
+| `POST /v1/sessions`, `GET /v1/sessions/{id}`, `POST /v1/sessions/end` | Borrow the GPU for ComfyUI or a service, see whether the session holds the card (`live`), and give it back. The main token or a client key; a client key reads and ends only the sessions it opened. |
 | `POST /v1/admin/quiesce`, `/v1/admin/resume` | Drain in-flight calls before a restart, and undo that. While quiesced, new jobs and chats get `503` with `Retry-After` (the SDKs retry it). |
 | `POST /v1/admin/gpu-held/clear` | Lift a GPU hold ([exec-recipes.md](exec-recipes.md#gpu-hold-after-a-crash)). |
 | `POST /mcp` | The MCP server (Streamable HTTP, stateless) when the `mcp` extra is installed ([mcp.md](mcp.md)). Chat-route credentials; a client key sees only its own jobs. |

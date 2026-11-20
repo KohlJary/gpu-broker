@@ -87,7 +87,7 @@ def create_app(broker: Broker, token: str, start: bool = True, keystore: KeyStor
     app.include_router(messages.router(broker, up, cloud), dependencies=[model_auth])
     app.include_router(embeddings.router(broker, up), dependencies=[model_auth])
     app.include_router(responses.router(broker, cloud=cloud), dependencies=[model_auth])
-    app.include_router(sessions.router(broker), dependencies=[auth])
+    app.include_router(sessions.router(broker), dependencies=[model_auth])   # a client key: its own only
     app.include_router(admin.router(broker), dependencies=[admin_auth])   # Bearer only: x-api-key is for SDKs
     app.include_router(keys.router(store), dependencies=[admin_auth])
     connect_admin, connect_public = connect.routers(broker, store)

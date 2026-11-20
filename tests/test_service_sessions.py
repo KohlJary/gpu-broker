@@ -4,6 +4,7 @@ A service is a unit with an endpoint, borrowed whole through a session like Comf
 says when it is still working; anything else that needs the card stops it.
 """
 import pathlib
+import time
 
 import pytest
 import yaml
@@ -213,3 +214,49 @@ def test_a_service_session_starts_it_holds_the_card_and_gives_it_back(service_br
     b.scheduler.maybe_restore()   # the session ended: the default LLM comes back and the service stops
     assert b.residency.current == "llama-8b" and b.residency.service is None
     assert "music-gen" not in b.driver.active
+
+
+# ---- client keys: their own sessions only --------------------------------------------------------
+
+def test_a_client_key_opens_reads_and_ends_only_its_own_session(service_broker):
+    from fastapi.testclient import TestClient
+
+    from gpu_broker.keys import KeyStore
+    from gpu_broker.web.app import create_app
+    b = service_broker
+    store = KeyStore(str(b.settings.db))
+    mine, theirs = store.issue("robo")["key"], store.issue("other")["key"]
+    with TestClient(create_app(b, TOKEN, start=False, keystore=store)) as c:
+        r = c.post("/v1/sessions", json={"model": "music", "idle_min": 5, "requester": "kohl"},
+                   headers={"Authorization": f"Bearer {mine}"})
+        assert r.status_code == 200, r.text
+        jid = r.json()["id"]
+        assert b.store.job(jid)["requester"] == "robo"   # its own name, not the one it claimed
+        for _ in range(200):
+            if c.get(f"/v1/sessions/{jid}", headers={"Authorization": f"Bearer {mine}"}).json()["live"]:
+                break
+            time.sleep(0.01)
+        else:
+            raise AssertionError("the session never went live")
+        assert c.get(f"/v1/sessions/{jid}", headers={"Authorization": f"Bearer {theirs}"}).status_code == 404
+        assert c.post("/v1/sessions/end", headers={"Authorization": f"Bearer {theirs}"}).status_code == 403
+        assert c.get("/v1/status", headers={"Authorization": f"Bearer {mine}"}).status_code == 403   # still main-only
+        assert c.post("/v1/sessions/end", json={"id": jid}, headers={"Authorization": f"Bearer {mine}"}).json() == {"ended": True}
+        assert done(b, jid)["result"]["ended"] == End.USER
+
+
+def test_the_main_token_still_ends_any_session_but_not_a_stale_id(service_broker):
+    from fastapi.testclient import TestClient
+
+    from gpu_broker.web.app import create_app
+    b = service_broker
+    with TestClient(create_app(b, TOKEN, start=False)) as c:
+        c.headers["Authorization"] = f"Bearer {TOKEN}"
+        jid = c.post("/v1/sessions", json={"model": "music", "idle_min": 5}).json()["id"]
+        for _ in range(200):
+            if c.get(f"/v1/sessions/{jid}").json()["live"]:
+                break
+            time.sleep(0.01)
+        assert c.post("/v1/sessions/end", json={"id": "not-it"}).json() == {"ended": False}
+        assert c.post("/v1/sessions/end").json() == {"ended": True}
+        assert done(b, jid)["result"]["ended"] == End.USER

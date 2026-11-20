@@ -165,7 +165,9 @@ MODEL_ROUTES = {"/v1/chat/completions", "/v1/messages", "/v1/responses", "/v1/em
                 "/v1/upstreams/passthrough"}
 ADMIN = {"/v1/admin/quiesce", "/v1/admin/resume", "/v1/admin/gpu-held/clear", "/v1/keys", "/v1/keys/{kid}",
          "/v1/connect/invite", "/v1/connect/clients", "/v1/connect/{name}", "/v1/disconnect/{name}"}
-OPERATOR = {"/v1/jobs", "/v1/jobs/{jid}", "/v1/status", "/v1/events", "/v1/catalog", "/v1/sessions", "/v1/sessions/end",
+# A client key's own sessions: it may open one, read and end only its own (tests/test_service_sessions.py).
+OWN = {"/v1/sessions", "/v1/sessions/{jid}", "/v1/sessions/end"}
+OPERATOR = {"/v1/jobs", "/v1/jobs/{jid}", "/v1/status", "/v1/events", "/v1/catalog",
             "/v1/gpu", "/v1/ui", "/v1/metrics", "/v1/stats", "/v1/upstreams"}
 
 
@@ -185,7 +187,7 @@ def routes(app) -> list[tuple[str, str]]:
 def test_every_route_has_the_scope_it_should(plain_broker):
     app = create_app(plain_broker, "main-token", start=False)
     table = routes(app)
-    assert {p for _, p in table} == PUBLIC | MODEL_ROUTES | ADMIN | OPERATOR   # a new route must be classified here
+    assert {p for _, p in table} == PUBLIC | MODEL_ROUTES | OWN | ADMIN | OPERATOR   # a new route must be classified here
     with TestClient(app) as c:
         key = c.post("/v1/keys", headers={"Authorization": "Bearer main-token"}, json={"name": "laptop"}).json()["key"]
         for method, path in table:
@@ -193,13 +195,13 @@ def test_every_route_has_the_scope_it_should(plain_broker):
             kw = {"json": {}} if method in ("POST", "PUT") else {}
             as_key = c.request(method, url, headers={"Authorization": f"Bearer {key}"}, **kw).status_code
             as_x_main = c.request(method, url, headers={"x-api-key": "main-token"}, **kw).status_code
-            if path in PUBLIC or path in MODEL_ROUTES:
+            if path in PUBLIC or path in MODEL_ROUTES or path in OWN:
                 assert as_key not in (401, 403), (method, path)
             else:
                 assert as_key == 403, (method, path)
             if path in ADMIN:
                 assert as_x_main == 401, (method, path)
-            elif path in OPERATOR:
+            elif path in OPERATOR or path in OWN:
                 assert as_x_main not in (401, 403), (method, path)
 
 
